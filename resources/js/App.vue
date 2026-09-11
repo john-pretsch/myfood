@@ -3,13 +3,16 @@ import { RouterLink, RouterView } from 'vue-router';
 </script>
 
 <template>
-    <div class="min-h-screen bg-neutral-50 text-neutral-900">
-        <header class="border-b border-neutral-200 bg-white">
+    <div class="min-h-screen bg-stone-50 text-stone-900">
+        <header class="sticky top-0 z-10 border-b border-stone-200 bg-white/80 backdrop-blur">
             <div class="mx-auto flex max-w-4xl items-center justify-between px-6 py-4">
-                <RouterLink to="/" class="text-lg font-semibold tracking-tight">MyFood</RouterLink>
+                <RouterLink to="/" class="flex items-center gap-2 text-lg font-semibold tracking-tight text-stone-900">
+                    <span class="text-xl">🍲</span>
+                    MyFood
+                </RouterLink>
                 <RouterLink
                     to="/recipes/new"
-                    class="rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700"
+                    class="rounded-md bg-amber-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-amber-700"
                 >
                     New Recipe
                 </RouterLink>
