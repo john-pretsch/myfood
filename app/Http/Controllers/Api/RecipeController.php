@@ -9,9 +9,12 @@ use App\Models\Ingredient;
 use App\Models\Nutrition;
 use App\Models\Recipe;
 use App\Models\Tag;
+use App\Services\RecipeUrlImporter;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use RuntimeException;
 
 class RecipeController extends Controller
 {
@@ -31,14 +34,33 @@ class RecipeController extends Controller
     {
         $data = $this->validated($request);
 
-        $recipe = Recipe::create([
-            ...$data,
-            'slug' => $this->uniqueSlug($data['title']),
-        ]);
-
-        $this->syncRelations($recipe, $data);
+        $recipe = $this->createRecipe($data);
 
         return new RecipeResource($recipe->load(['recipeIngredients.ingredient', 'steps', 'tags', 'nutrition']));
+    }
+
+    public function import(Request $request, RecipeUrlImporter $importer)
+    {
+        $input = $request->validate([
+            'url' => ['required_without:html', 'nullable', 'url', 'max:2048'],
+            'html' => ['required_without:url', 'nullable', 'string'],
+        ]);
+
+        try {
+            $parsed = filled($input['html'] ?? null)
+                ? $importer->importFromHtml($input['html'], $input['url'] ?? null)
+                : $importer->import($input['url']);
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        $data = Validator::make($parsed, $this->rules())->validate();
+
+        $recipe = $this->createRecipe($data);
+
+        return (new RecipeResource($recipe->load(['recipeIngredients.ingredient', 'steps', 'tags', 'nutrition'])))
+            ->response()
+            ->setStatusCode(201);
     }
 
     public function show(Recipe $recipe)
@@ -66,7 +88,24 @@ class RecipeController extends Controller
 
     private function validated(Request $request): array
     {
-        return $request->validate([
+        return $request->validate($this->rules());
+    }
+
+    private function createRecipe(array $data): Recipe
+    {
+        $recipe = Recipe::create([
+            ...$data,
+            'slug' => $this->uniqueSlug($data['title']),
+        ]);
+
+        $this->syncRelations($recipe, $data);
+
+        return $recipe;
+    }
+
+    private function rules(): array
+    {
+        return [
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'servings' => ['nullable', 'integer', 'min:1'],
@@ -93,7 +132,7 @@ class RecipeController extends Controller
             'nutrition.protein_g' => ['nullable', 'numeric', 'min:0'],
             'nutrition.carbs_g' => ['nullable', 'numeric', 'min:0'],
             'nutrition.fat_g' => ['nullable', 'numeric', 'min:0'],
-        ]);
+        ];
     }
 
     private function syncRelations(Recipe $recipe, array $data): void

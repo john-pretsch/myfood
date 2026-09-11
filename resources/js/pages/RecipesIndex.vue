@@ -1,11 +1,39 @@
 <script setup>
 import { ref, watch } from 'vue';
-import { RouterLink } from 'vue-router';
+import { RouterLink, useRouter } from 'vue-router';
 import api from '../api';
 
+const router = useRouter();
 const recipes = ref([]);
 const search = ref('');
 const loading = ref(true);
+
+const importUrl = ref('');
+const importing = ref(false);
+const importError = ref('');
+const pasteMode = ref(false);
+const pasteHtml = ref('');
+
+async function importFromUrl() {
+    const url = importUrl.value.trim();
+    const html = pasteHtml.value.trim();
+    if (importing.value || (pasteMode.value ? !html : !url)) return;
+
+    importing.value = true;
+    importError.value = '';
+    try {
+        const payload = pasteMode.value ? { html, url: url || undefined } : { url };
+        const { data } = await api.post('/recipes/import', payload);
+        router.push({ name: 'recipes.show', params: { id: data.data.id } });
+    } catch (e) {
+        importError.value =
+            e.response?.data?.message ??
+            e.response?.data?.errors?.url?.[0] ??
+            e.response?.data?.errors?.html?.[0] ??
+            'Import failed.';
+        importing.value = false;
+    }
+}
 
 async function load() {
     loading.value = true;
@@ -25,6 +53,46 @@ load();
 
 <template>
     <div>
+        <form class="mb-1 space-y-2" @submit.prevent="importFromUrl">
+            <div class="flex gap-2">
+                <input
+                    v-model="importUrl"
+                    type="url"
+                    :placeholder="pasteMode ? 'Original URL (optional, for reference)…' : 'Import from a recipe URL…'"
+                    class="flex-1 rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-neutral-500 focus:outline-none"
+                />
+                <button
+                    v-if="!pasteMode"
+                    type="submit"
+                    :disabled="importing"
+                    class="shrink-0 rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-50"
+                >
+                    {{ importing ? 'Importing…' : 'Import' }}
+                </button>
+            </div>
+            <div v-if="pasteMode" class="flex gap-2">
+                <textarea
+                    v-model="pasteHtml"
+                    rows="3"
+                    placeholder="Paste the page's HTML here (open the recipe in your browser, View Source or Save Page As, then copy it)…"
+                    class="flex-1 rounded-md border border-neutral-300 px-3 py-2 font-mono text-xs focus:border-neutral-500 focus:outline-none"
+                ></textarea>
+                <button
+                    type="submit"
+                    :disabled="importing"
+                    class="h-fit shrink-0 rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-50"
+                >
+                    {{ importing ? 'Importing…' : 'Import' }}
+                </button>
+            </div>
+        </form>
+        <p class="mb-4 text-xs text-neutral-500">
+            <button type="button" class="hover:underline" @click="pasteMode = !pasteMode">
+                {{ pasteMode ? '← Import from a URL instead' : 'Site blocking the import? Paste its page source instead' }}
+            </button>
+        </p>
+        <p v-if="importError" class="mb-4 text-xs text-red-600">{{ importError }}</p>
+
         <input
             v-model="search"
             type="search"
