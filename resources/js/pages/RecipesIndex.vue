@@ -2,8 +2,10 @@
 import { ref, watch } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import api from '../api';
+import { useAuth } from '../auth';
 
 const router = useRouter();
+const { user } = useAuth();
 const recipes = ref([]);
 const search = ref('');
 const loading = ref(true);
@@ -53,7 +55,15 @@ load();
 
 <template>
     <div>
-        <form class="mb-1 space-y-2 rounded-xl border border-stone-200 bg-white p-4 shadow-sm" @submit.prevent="importFromUrl">
+        <p v-if="!user" class="mb-1 rounded-xl border border-dashed border-stone-300 bg-white p-4 text-sm text-stone-500">
+            <RouterLink to="/login" class="text-amber-700 hover:underline">Log in</RouterLink>
+            to import recipes.
+        </p>
+        <form
+            v-else
+            class="mb-1 space-y-2 rounded-xl border border-stone-200 bg-white p-4 shadow-sm"
+            @submit.prevent="importFromUrl"
+        >
             <div class="flex gap-2">
                 <input
                     v-model="importUrl"

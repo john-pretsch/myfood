@@ -1,5 +1,16 @@
 <script setup>
-import { RouterLink, RouterView } from 'vue-router';
+import { RouterLink, RouterView, useRouter } from 'vue-router';
+import { useAuth } from './auth';
+
+const router = useRouter();
+const { user, ready, fetchUser, logout } = useAuth();
+
+fetchUser();
+
+async function handleLogout() {
+    await logout();
+    router.push({ name: 'recipes.index' });
+}
 </script>
 
 <template>
@@ -10,12 +21,26 @@ import { RouterLink, RouterView } from 'vue-router';
                     <span class="text-xl">🍲</span>
                     MyFood
                 </RouterLink>
-                <RouterLink
-                    to="/recipes/new"
-                    class="rounded-md bg-amber-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-amber-700"
-                >
-                    New Recipe
-                </RouterLink>
+                <div class="flex items-center gap-3">
+                    <RouterLink
+                        v-if="user"
+                        to="/recipes/new"
+                        class="rounded-md bg-amber-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-amber-700"
+                    >
+                        New Recipe
+                    </RouterLink>
+                    <button
+                        v-if="user"
+                        type="button"
+                        class="text-sm text-stone-500 hover:text-stone-700"
+                        @click="handleLogout"
+                    >
+                        Log out
+                    </button>
+                    <RouterLink v-else-if="ready" to="/login" class="text-sm text-stone-500 hover:text-stone-700">
+                        Log in
+                    </RouterLink>
+                </div>
             </div>
         </header>
 

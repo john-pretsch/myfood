@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -9,6 +10,11 @@ use Tests\TestCase;
 class RecipeImportTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function actingAsUser(): void
+    {
+        $this->actingAs(User::factory()->create());
+    }
 
     private function pageWithRecipeJsonLd(): string
     {
@@ -41,6 +47,8 @@ class RecipeImportTest extends TestCase
 
     public function test_it_imports_a_recipe_from_a_url(): void
     {
+        $this->actingAsUser();
+
         Http::fake([
             'recipes.test/*' => Http::response($this->pageWithRecipeJsonLd()),
         ]);
@@ -72,6 +80,8 @@ class RecipeImportTest extends TestCase
 
     public function test_it_returns_422_when_no_recipe_data_is_present(): void
     {
+        $this->actingAsUser();
+
         Http::fake([
             'recipes.test/*' => Http::response('<html><body>Just a blog post.</body></html>'),
         ]);
@@ -83,6 +93,8 @@ class RecipeImportTest extends TestCase
 
     public function test_it_validates_the_url(): void
     {
+        $this->actingAsUser();
+
         $this->postJson('/api/recipes/import', ['url' => 'not-a-url'])
             ->assertStatus(422)
             ->assertJsonValidationErrors('url');
@@ -90,6 +102,8 @@ class RecipeImportTest extends TestCase
 
     public function test_it_requires_a_url_or_html(): void
     {
+        $this->actingAsUser();
+
         $this->postJson('/api/recipes/import', [])
             ->assertStatus(422)
             ->assertJsonValidationErrors(['url', 'html']);
@@ -97,6 +111,8 @@ class RecipeImportTest extends TestCase
 
     public function test_it_imports_from_pasted_html_without_fetching(): void
     {
+        $this->actingAsUser();
+
         Http::fake(fn () => throw new \RuntimeException('HTTP should not be called for pasted HTML'));
 
         $response = $this->postJson('/api/recipes/import', [
@@ -107,5 +123,11 @@ class RecipeImportTest extends TestCase
         $response->assertCreated()
             ->assertJsonPath('data.title', 'Test Pancakes')
             ->assertJsonPath('data.source_url', 'https://recipes.test/pancakes');
+    }
+
+    public function test_guests_cannot_import_a_recipe(): void
+    {
+        $this->postJson('/api/recipes/import', ['url' => 'https://recipes.test/pancakes'])
+            ->assertStatus(401);
     }
 }
