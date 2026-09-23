@@ -55,12 +55,8 @@ load();
 
 <template>
     <div>
-        <p v-if="!user" class="mb-1 rounded-xl border border-dashed border-stone-300 bg-white p-4 text-sm text-stone-500">
-            <RouterLink to="/login" class="text-amber-700 hover:underline">Log in</RouterLink>
-            to import recipes.
-        </p>
         <form
-            v-else
+            v-if="user"
             class="mb-1 space-y-2 rounded-xl border border-stone-200 bg-white p-4 shadow-sm"
             @submit.prevent="importFromUrl"
         >

@@ -35,4 +35,11 @@ return [
         ],
     ],
 
+    'jepflow_sso' => [
+        'base_url' => env('JEPFLOW_SSO_BASE_URL'),
+        'client_id' => env('JEPFLOW_SSO_CLIENT_ID'),
+        'client_secret' => env('JEPFLOW_SSO_CLIENT_SECRET'),
+        'redirect' => env('JEPFLOW_SSO_REDIRECT_URI'),
+    ],
+
 ];
