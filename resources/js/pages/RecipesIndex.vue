@@ -9,6 +9,8 @@ const { user } = useAuth();
 const recipes = ref([]);
 const search = ref('');
 const loading = ref(true);
+const page = ref(1);
+const lastPage = ref(1);
 
 const importUrl = ref('');
 const importing = ref(false);
@@ -39,15 +41,25 @@ async function importFromUrl() {
 
 async function load() {
     loading.value = true;
-    const { data } = await api.get('/recipes', { params: { search: search.value || undefined } });
+    const { data } = await api.get('/recipes', { params: { search: search.value || undefined, page: page.value } });
     recipes.value = data.data;
+    lastPage.value = data.meta?.last_page ?? 1;
     loading.value = false;
+}
+
+function goToPage(n) {
+    if (n < 1 || n > lastPage.value) return;
+    page.value = n;
+    load();
 }
 
 let debounce;
 watch(search, () => {
     clearTimeout(debounce);
-    debounce = setTimeout(load, 300);
+    debounce = setTimeout(() => {
+        page.value = 1;
+        load();
+    }, 300);
 });
 
 load();
@@ -151,5 +163,25 @@ load();
                 </RouterLink>
             </li>
         </ul>
+
+        <div v-if="!loading && recipes.length && lastPage > 1" class="mt-6 flex items-center justify-center gap-3">
+            <button
+                type="button"
+                :disabled="page <= 1"
+                class="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-50"
+                @click="goToPage(page - 1)"
+            >
+                ← Prev
+            </button>
+            <span class="text-sm text-stone-500">Page {{ page }} of {{ lastPage }}</span>
+            <button
+                type="button"
+                :disabled="page >= lastPage"
+                class="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-50"
+                @click="goToPage(page + 1)"
+            >
+                Next →
+            </button>
+        </div>
     </div>
 </template>

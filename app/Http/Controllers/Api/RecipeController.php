@@ -26,7 +26,7 @@ class RecipeController extends Controller
             ->when($request->string('search')->toString(), fn ($query, $search) => $query->where('title', 'like', "%{$search}%"))
             ->when($request->string('tag')->toString(), fn ($query, $tag) => $query->whereHas('tags', fn ($q) => $q->where('name', $tag)))
             ->latest()
-            ->paginate(12);
+            ->paginate(6);
 
         return RecipeSummaryResource::collection($recipes);
     }

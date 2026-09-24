@@ -172,6 +172,17 @@ loadTags();
                 <label class="mb-1 block text-sm font-medium">Image URL</label>
                 <input v-model="form.image_url" type="text" class="w-full rounded-md border border-stone-300 px-3 py-2 text-sm" />
             </div>
+
+            <div v-if="isEdit" class="flex justify-end">
+                <button
+                    type="button"
+                    :disabled="saving"
+                    class="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-amber-700 disabled:opacity-50"
+                    @click="submit"
+                >
+                    {{ saving ? 'Saving…' : 'Save' }}
+                </button>
+            </div>
         </section>
 
         <section class="rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
@@ -186,6 +197,17 @@ loadTags();
                 <input v-model="ingredient.notes" type="text" placeholder="notes" class="col-span-2 rounded-md border border-stone-300 px-2 py-1.5 text-sm" />
                 <button type="button" class="col-span-1 text-sm text-red-500" @click="removeIngredient(index)">✕</button>
             </div>
+
+            <div v-if="isEdit" class="mt-2 flex justify-end">
+                <button
+                    type="button"
+                    :disabled="saving"
+                    class="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-amber-700 disabled:opacity-50"
+                    @click="submit"
+                >
+                    {{ saving ? 'Saving…' : 'Save' }}
+                </button>
+            </div>
         </section>
 
         <section class="rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
@@ -197,6 +219,17 @@ loadTags();
                 <span class="mt-2 w-5 shrink-0 text-sm text-stone-400">{{ index + 1 }}.</span>
                 <textarea v-model="step.instruction" rows="2" class="w-full rounded-md border border-stone-300 px-3 py-1.5 text-sm"></textarea>
                 <button type="button" class="text-sm text-red-500" @click="removeStep(index)">✕</button>
+            </div>
+
+            <div v-if="isEdit" class="mt-2 flex justify-end">
+                <button
+                    type="button"
+                    :disabled="saving"
+                    class="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-amber-700 disabled:opacity-50"
+                    @click="submit"
+                >
+                    {{ saving ? 'Saving…' : 'Save' }}
+                </button>
             </div>
         </section>
 
@@ -220,11 +253,33 @@ loadTags();
                     <input v-model.number="form.nutrition.fat_g" type="number" min="0" class="w-full rounded-md border border-stone-300 px-2 py-1.5 text-sm" />
                 </div>
             </div>
+
+            <div v-if="isEdit" class="mt-4 flex justify-end">
+                <button
+                    type="button"
+                    :disabled="saving"
+                    class="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-amber-700 disabled:opacity-50"
+                    @click="submit"
+                >
+                    {{ saving ? 'Saving…' : 'Save' }}
+                </button>
+            </div>
         </section>
 
-        <div>
+        <div class="rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
             <label class="mb-1 block text-sm font-medium">Notes</label>
             <textarea v-model="form.notes" rows="2" class="w-full rounded-md border border-stone-300 px-3 py-2 text-sm"></textarea>
+
+            <div v-if="isEdit" class="mt-4 flex justify-end">
+                <button
+                    type="button"
+                    :disabled="saving"
+                    class="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-amber-700 disabled:opacity-50"
+                    @click="submit"
+                >
+                    {{ saving ? 'Saving…' : 'Save' }}
+                </button>
+            </div>
         </div>
 
         <button
