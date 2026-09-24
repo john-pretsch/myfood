@@ -215,7 +215,7 @@ load();
                     <h2 :class="plainMode ? 'mb-1 flex items-center gap-2 text-sm font-semibold text-stone-900' : 'mb-3 flex items-center gap-2 font-medium text-stone-900'">
                         🧺 Ingredients
                     </h2>
-                    <ul :class="plainMode ? 'space-y-0.5 text-sm leading-snug' : 'space-y-2 text-sm'">
+                    <ul :class="plainMode ? 'space-y-0.5 text-lg leading-snug sm:text-sm' : 'space-y-2 text-sm'">
                         <li
                             v-for="ing in recipe.ingredients"
                             :key="ing.id"
@@ -236,7 +236,7 @@ load();
                     <h2 :class="plainMode ? 'mb-1 flex items-center gap-2 text-sm font-semibold text-stone-900' : 'mb-3 flex items-center gap-2 font-medium text-stone-900'">
                         📋 Steps
                     </h2>
-                    <ol :class="plainMode ? 'space-y-1 text-sm leading-snug' : 'space-y-4 text-sm'">
+                    <ol :class="plainMode ? 'space-y-1 text-lg leading-snug sm:text-sm' : 'space-y-4 text-sm'">
                         <li v-for="(step, index) in recipe.steps" :key="step.id" class="flex gap-2">
                             <span
                                 v-if="!plainMode"
