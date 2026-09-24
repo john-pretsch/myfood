@@ -11,6 +11,7 @@ use App\Models\Recipe;
 use App\Models\Tag;
 use App\Services\RecipeUrlImporter;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -54,6 +55,9 @@ class RecipeController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
+        // Only admins create tags, so keep just the imported keywords that match an existing tag.
+        $parsed['tags'] = Tag::whereIn('name', $parsed['tags'] ?? [])->pluck('name')->all();
+
         $data = Validator::make($parsed, $this->rules())->validate();
 
         $recipe = $this->createRecipe($data);
@@ -77,6 +81,35 @@ class RecipeController extends Controller
         $this->syncRelations($recipe, $data);
 
         return new RecipeResource($recipe->load(['recipeIngredients.ingredient', 'steps', 'tags', 'nutrition']));
+    }
+
+    public function updateImage(Request $request, Recipe $recipe)
+    {
+        $input = $request->validate([
+            'image' => ['required_without:image_url', 'nullable', 'image', 'max:10240'],
+            'image_url' => ['required_without:image', 'nullable', 'url', 'max:2048'],
+        ]);
+
+        $previous = $recipe->image_url;
+
+        $recipe->update([
+            'image_url' => $request->hasFile('image')
+                ? Storage::disk('public')->url($request->file('image')->store('recipe-images', 'public'))
+                : $input['image_url'],
+        ]);
+
+        $this->deleteUploadedImage($previous);
+
+        return new RecipeResource($recipe->load(['recipeIngredients.ingredient', 'steps', 'tags', 'nutrition']));
+    }
+
+    private function deleteUploadedImage(?string $url): void
+    {
+        $prefix = Storage::disk('public')->url('recipe-images/');
+
+        if ($url && str_starts_with($url, $prefix)) {
+            Storage::disk('public')->delete('recipe-images/'.basename($url));
+        }
     }
 
     public function destroy(Recipe $recipe)
@@ -126,7 +159,7 @@ class RecipeController extends Controller
             'steps.*.instruction' => ['required_with:steps', 'string'],
             'steps.*.image_url' => ['nullable', 'string', 'max:2048'],
             'tags' => ['array'],
-            'tags.*' => ['string', 'max:100'],
+            'tags.*' => ['string', Rule::exists('tags', 'name')],
             'nutrition' => ['nullable', 'array'],
             'nutrition.calories' => ['nullable', 'integer', 'min:0'],
             'nutrition.protein_g' => ['nullable', 'numeric', 'min:0'],
@@ -161,11 +194,7 @@ class RecipeController extends Controller
             ]);
         }
 
-        $tagIds = collect($data['tags'] ?? [])
-            ->filter()
-            ->map(fn ($name) => Tag::firstOrCreate(['name' => trim($name)])->id);
-
-        $recipe->tags()->sync($tagIds);
+        $recipe->tags()->sync(Tag::whereIn('name', $data['tags'] ?? [])->pluck('id'));
 
         if (! empty(array_filter($data['nutrition'] ?? []))) {
             Nutrition::updateOrCreate(

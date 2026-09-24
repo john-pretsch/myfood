@@ -1,16 +1,10 @@
 <script setup>
-import { RouterLink, RouterView, useRouter } from 'vue-router';
+import { RouterLink, RouterView } from 'vue-router';
 import { useAuth } from './auth';
 
-const router = useRouter();
-const { user, ready, fetchUser, logout } = useAuth();
+const { user, ready, isAdmin, fetchUser, logout } = useAuth();
 
 fetchUser();
-
-async function handleLogout() {
-    await logout();
-    router.push({ name: 'recipes.index' });
-}
 </script>
 
 <template>
@@ -22,6 +16,7 @@ async function handleLogout() {
                     MyFood
                 </RouterLink>
                 <div class="flex items-center gap-3">
+                    <RouterLink v-if="isAdmin" to="/tags" class="text-sm text-stone-500 hover:text-stone-700">Tags</RouterLink>
                     <RouterLink
                         v-if="user"
                         to="/recipes/new"
@@ -33,13 +28,13 @@ async function handleLogout() {
                         v-if="user"
                         type="button"
                         class="text-sm text-stone-500 hover:text-stone-700"
-                        @click="handleLogout"
+                        @click="logout"
                     >
                         Log out
                     </button>
-                    <RouterLink v-else-if="ready" to="/login" class="text-sm text-stone-500 hover:text-stone-700">
+                    <a v-else-if="ready" href="/auth/sso/redirect" class="text-sm text-stone-500 hover:text-stone-700">
                         Log in
-                    </RouterLink>
+                    </a>
                 </div>
             </div>
         </header>

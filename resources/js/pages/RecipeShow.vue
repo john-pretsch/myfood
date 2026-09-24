@@ -2,11 +2,74 @@
 import { ref } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import api from '../api';
+import { useAuth } from '../auth';
 import { formatQuantity } from '../format';
 
 const props = defineProps({ id: [String, Number] });
 const router = useRouter();
 const recipe = ref(null);
+const { user } = useAuth();
+
+const imageEditorOpen = ref(false);
+const imageUrlInput = ref('');
+const imageSaving = ref(false);
+const imageError = ref('');
+
+function openImageEditor() {
+    imageUrlInput.value = '';
+    imageError.value = '';
+    imageEditorOpen.value = true;
+}
+
+// Phone photos are often larger than the server's upload limit, so shrink them first.
+function resizeImage(file, maxSize = 1600) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+            const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.round(img.width * scale);
+            canvas.height = Math.round(img.height * scale);
+            canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+            URL.revokeObjectURL(img.src);
+            canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Could not read image'))), 'image/jpeg', 0.85);
+        };
+        img.onerror = () => reject(new Error('Could not read image'));
+        img.src = URL.createObjectURL(file);
+    });
+}
+
+async function saveImage(payload) {
+    imageSaving.value = true;
+    imageError.value = '';
+    try {
+        const { data } = await api.post(`/recipes/${props.id}/image`, payload);
+        recipe.value = data.data;
+        imageEditorOpen.value = false;
+    } catch (e) {
+        imageError.value = e.response?.data?.message ?? e.message ?? 'Could not update image';
+    } finally {
+        imageSaving.value = false;
+    }
+}
+
+async function uploadImage(event) {
+    const file = event.target.files[0];
+    event.target.value = '';
+    if (!file) return;
+    try {
+        const body = new FormData();
+        body.append('image', await resizeImage(file), 'image.jpg');
+        await saveImage(body);
+    } catch (e) {
+        imageError.value = e.message;
+    }
+}
+
+function saveImageUrl() {
+    if (!imageUrlInput.value.trim()) return;
+    saveImage({ image_url: imageUrlInput.value.trim() });
+}
 
 function readStoredPlainMode() {
     try {
@@ -55,7 +118,7 @@ load();
         <div :class="plainMode ? 'grayscale contrast-125' : ''">
             <div
                 v-if="!plainMode"
-                class="mb-6 aspect-[3/1] w-full overflow-hidden rounded-xl bg-gradient-to-br from-amber-100 to-orange-100 sm:aspect-[3.5/1]"
+                class="relative mb-6 aspect-[3/1] w-full overflow-hidden rounded-xl bg-gradient-to-br from-amber-100 to-orange-100 sm:aspect-[3.5/1]"
             >
                 <img
                     v-if="recipe.image_url"
@@ -64,6 +127,47 @@ load();
                     class="h-full w-full object-cover"
                 />
                 <div v-else class="flex h-full w-full items-center justify-center text-5xl">🍳</div>
+                <button
+                    v-if="user && !imageEditorOpen"
+                    type="button"
+                    class="absolute right-2 bottom-2 rounded-md bg-white/90 px-3 py-1.5 text-xs font-medium text-stone-800 shadow hover:bg-white"
+                    @click="openImageEditor"
+                >
+                    📷 Change image
+                </button>
+            </div>
+
+            <div v-if="!plainMode && imageEditorOpen" class="-mt-4 mb-6 rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
+                <div class="flex flex-wrap items-center gap-2">
+                    <label
+                        class="cursor-pointer rounded-md bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700"
+                        :class="imageSaving ? 'pointer-events-none opacity-50' : ''"
+                    >
+                        Upload photo
+                        <input type="file" accept="image/*" class="hidden" @change="uploadImage" />
+                    </label>
+                    <span class="text-sm text-stone-500">or</span>
+                    <form class="flex min-w-0 flex-1 gap-2" @submit.prevent="saveImageUrl">
+                        <input
+                            v-model="imageUrlInput"
+                            type="url"
+                            placeholder="Paste image URL"
+                            class="min-w-0 flex-1 rounded-md border border-stone-300 px-3 py-1.5 text-sm"
+                        />
+                        <button
+                            type="submit"
+                            :disabled="imageSaving || !imageUrlInput.trim()"
+                            class="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm hover:bg-stone-100 disabled:opacity-50"
+                        >
+                            Save
+                        </button>
+                    </form>
+                    <button type="button" class="px-2 py-1.5 text-sm text-stone-500 hover:text-stone-800" @click="imageEditorOpen = false">
+                        Cancel
+                    </button>
+                </div>
+                <p v-if="imageSaving" class="mt-2 text-sm text-stone-500">Saving…</p>
+                <p v-if="imageError" class="mt-2 text-sm text-red-600">{{ imageError }}</p>
             </div>
 
             <div class="flex items-start justify-between gap-4">

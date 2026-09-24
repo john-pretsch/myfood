@@ -1,8 +1,9 @@
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import api from './api';
 
 const user = ref(null);
 const ready = ref(false);
+const isAdmin = computed(() => user.value?.role === 'admin');
 
 async function fetchUser() {
     try {
@@ -15,16 +16,12 @@ async function fetchUser() {
     }
 }
 
-async function login(email, password) {
-    await api.post('/login', { email, password });
-    await fetchUser();
-}
-
 async function logout() {
-    await api.post('/logout');
+    const { data } = await api.post('/logout');
     user.value = null;
+    window.location.href = data.redirect;
 }
 
 export function useAuth() {
-    return { user, ready, fetchUser, login, logout };
+    return { user, ready, isAdmin, fetchUser, logout };
 }

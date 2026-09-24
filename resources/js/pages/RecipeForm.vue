@@ -2,9 +2,12 @@
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import api from '../api';
+import { useAuth } from '../auth';
+import TagPicker from '../components/TagPicker.vue';
 
 const props = defineProps({ id: [String, Number] });
 const router = useRouter();
+const { isAdmin } = useAuth();
 const isEdit = computed(() => !!props.id);
 const saving = ref(false);
 const errors = ref({});
@@ -16,16 +19,37 @@ const form = ref({
     prep_minutes: null,
     cook_minutes: null,
     total_minutes: null,
-    difficulty: '',
-    cuisine: '',
     image_url: '',
     source_url: '',
     notes: '',
     ingredients: [{ name: '', quantity: null, unit: '', notes: '' }],
     steps: [{ instruction: '' }],
-    tags: '',
+    tags: [],
     nutrition: { calories: null, protein_g: null, carbs_g: null, fat_g: null },
 });
+
+const availableTags = ref([]);
+const creatingTag = ref(false);
+const tagError = ref('');
+
+async function loadTags() {
+    const { data } = await api.get('/tags');
+    availableTags.value = data.data;
+}
+
+async function createTag(name) {
+    creatingTag.value = true;
+    tagError.value = '';
+    try {
+        const { data } = await api.post('/tags', { name });
+        availableTags.value = [...availableTags.value, data.data].sort((a, b) => a.name.localeCompare(b.name));
+        form.value.tags.push(data.data.name);
+    } catch (e) {
+        tagError.value = e.response?.data?.errors?.name?.[0] ?? e.response?.data?.message ?? 'Could not add tag.';
+    } finally {
+        creatingTag.value = false;
+    }
+}
 
 async function load() {
     if (!isEdit.value) return;
@@ -38,8 +62,6 @@ async function load() {
         prep_minutes: recipe.prep_minutes,
         cook_minutes: recipe.cook_minutes,
         total_minutes: recipe.total_minutes,
-        difficulty: recipe.difficulty ?? '',
-        cuisine: recipe.cuisine ?? '',
         image_url: recipe.image_url ?? '',
         source_url: recipe.source_url ?? '',
         notes: recipe.notes ?? '',
@@ -47,7 +69,7 @@ async function load() {
             ? recipe.ingredients.map((i) => ({ name: i.name, quantity: i.quantity, unit: i.unit ?? '', notes: i.notes ?? '' }))
             : [{ name: '', quantity: null, unit: '', notes: '' }],
         steps: recipe.steps.length ? recipe.steps.map((s) => ({ instruction: s.instruction })) : [{ instruction: '' }],
-        tags: recipe.tags.join(', '),
+        tags: [...recipe.tags],
         nutrition: recipe.nutrition ?? { calories: null, protein_g: null, carbs_g: null, fat_g: null },
     };
 }
@@ -76,10 +98,6 @@ async function submit() {
         ...form.value,
         ingredients: form.value.ingredients.filter((i) => i.name.trim() !== ''),
         steps: form.value.steps.filter((s) => s.instruction.trim() !== ''),
-        tags: form.value.tags
-            .split(',')
-            .map((t) => t.trim())
-            .filter(Boolean),
     };
 
     try {
@@ -100,6 +118,7 @@ async function submit() {
 }
 
 load();
+loadTags();
 </script>
 
 <template>
@@ -137,25 +156,16 @@ load();
                 </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="mb-1 block text-sm font-medium">Difficulty</label>
-                    <select v-model="form.difficulty" class="w-full rounded-md border border-stone-300 px-3 py-2 text-sm">
-                        <option value="">—</option>
-                        <option value="easy">Easy</option>
-                        <option value="medium">Medium</option>
-                        <option value="hard">Hard</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="mb-1 block text-sm font-medium">Cuisine</label>
-                    <input v-model="form.cuisine" type="text" class="w-full rounded-md border border-stone-300 px-3 py-2 text-sm" />
-                </div>
-            </div>
-
             <div>
-                <label class="mb-1 block text-sm font-medium">Tags (comma separated)</label>
-                <input v-model="form.tags" type="text" placeholder="vegetarian, dessert" class="w-full rounded-md border border-stone-300 px-3 py-2 text-sm" />
+                <label class="mb-1 block text-sm font-medium">Tags</label>
+                <TagPicker
+                    v-model="form.tags"
+                    :tags="availableTags"
+                    :allow-create="isAdmin"
+                    :creating="creatingTag"
+                    @create="createTag"
+                />
+                <p v-if="tagError" class="mt-1 text-xs text-red-600">{{ tagError }}</p>
             </div>
 
             <div>

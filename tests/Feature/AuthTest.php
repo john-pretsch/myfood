@@ -3,31 +3,34 @@
 namespace Tests\Feature;
 
 use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Socialite\Facades\Socialite;
+use Laravel\Socialite\Two\User as SocialiteUser;
+use Mockery;
 use Tests\TestCase;
 
 class AuthTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function fakeSsoSuccess(string $ssoId, string $email, string $name, array $permissions = ['global' => null, 'apps' => []]): void
+    private function fakeSsoCallback(string $ssoId, string $email, string $name, array $permissions = ['global' => null, 'apps' => []]): void
     {
-        Http::fake([
-            '*/oauth/token' => Http::response(['access_token' => 'fake-token']),
-            '*/api/user' => Http::response(['id' => $ssoId, 'email' => $email, 'name' => $name]),
-            '*/api/permissions' => Http::response($permissions),
-        ]);
+        $ssoUser = (new SocialiteUser)->map(['id' => $ssoId, 'email' => $email, 'name' => $name]);
+        $ssoUser->token = 'fake-token';
+
+        $driver = Mockery::mock();
+        $driver->shouldReceive('user')->andReturn($ssoUser);
+        Socialite::shouldReceive('driver')->with('jepflow_sso')->andReturn($driver);
+
+        Http::fake(['*/api/permissions' => Http::response($permissions)]);
     }
 
-    public function test_a_user_can_log_in_via_sso_with_valid_credentials(): void
+    public function test_sso_callback_creates_and_logs_in_a_new_user(): void
     {
-        $this->fakeSsoSuccess('sso-123', 'jane@example.com', 'Jane');
+        $this->fakeSsoCallback('sso-123', 'jane@example.com', 'Jane');
 
-        $this->postJson('/api/login', [
-            'email' => 'jane@example.com',
-            'password' => 'whatever-the-sso-app-accepts',
-        ])->assertOk()->assertJsonPath('user.email', 'jane@example.com');
+        $this->get('/auth/sso/callback')->assertRedirect('/');
 
         $this->assertAuthenticated();
         $this->assertDatabaseHas('users', ['email' => 'jane@example.com', 'sso_id' => 'sso-123']);
@@ -37,12 +40,9 @@ class AuthTest extends TestCase
     {
         $user = User::factory()->create(['email' => 'jane@example.com']);
 
-        $this->fakeSsoSuccess('sso-123', 'jane@example.com', 'Jane');
+        $this->fakeSsoCallback('sso-123', 'jane@example.com', 'Jane');
 
-        $this->postJson('/api/login', [
-            'email' => 'jane@example.com',
-            'password' => 'whatever-the-sso-app-accepts',
-        ])->assertOk();
+        $this->get('/auth/sso/callback')->assertRedirect('/');
 
         $this->assertAuthenticatedAs($user->fresh());
         $this->assertSame('sso-123', $user->fresh()->sso_id);
@@ -50,55 +50,38 @@ class AuthTest extends TestCase
 
     public function test_the_users_myfood_role_is_synced_from_sso_permissions_on_login(): void
     {
-        $this->fakeSsoSuccess('sso-123', 'jane@example.com', 'Jane', [
+        $this->fakeSsoCallback('sso-123', 'jane@example.com', 'Jane', [
             'global' => 'edit',
             'apps' => ['myfood' => 'admin', 'fit' => 'read'],
         ]);
 
-        $this->postJson('/api/login', [
-            'email' => 'jane@example.com',
-            'password' => 'whatever-the-sso-app-accepts',
-        ])->assertOk();
+        $this->get('/auth/sso/callback');
 
         $this->assertDatabaseHas('users', ['email' => 'jane@example.com', 'role' => 'admin']);
     }
 
-    public function test_login_still_succeeds_when_the_permissions_fetch_fails(): void
+    public function test_local_password_login_no_longer_exists(): void
     {
-        Http::fake([
-            '*/oauth/token' => Http::response(['access_token' => 'fake-token']),
-            '*/api/user' => Http::response(['id' => 'sso-123', 'email' => 'jane@example.com', 'name' => 'Jane']),
-            '*/api/permissions' => Http::response(['message' => 'Server Error'], 500),
-        ]);
-
-        $this->postJson('/api/login', [
-            'email' => 'jane@example.com',
-            'password' => 'whatever-the-sso-app-accepts',
-        ])->assertOk();
-
-        $this->assertAuthenticated();
-        $this->assertDatabaseHas('users', ['email' => 'jane@example.com', 'role' => null]);
-    }
-
-    public function test_login_fails_when_sso_rejects_the_credentials(): void
-    {
-        Http::fake(['*/oauth/token' => Http::response(['error' => 'invalid_grant'], 400)]);
-
-        $this->postJson('/api/login', [
-            'email' => 'jane@example.com',
-            'password' => 'wrong-password',
-        ])->assertStatus(422);
+        $this->postJson('/api/login', ['email' => 'jane@example.com', 'password' => 'secret'])
+            ->assertStatus(405);
 
         $this->assertGuest();
     }
 
-    public function test_a_logged_in_user_can_log_out(): void
+    public function test_logout_ends_session_and_points_to_sso_logout(): void
     {
-        $user = User::factory()->create();
+        config([
+            'services.jepflow_sso.base_url' => 'https://sso.jepflow.io',
+            'services.jepflow_sso.client_id' => 'myfood-client',
+        ]);
 
-        $this->actingAs($user)
+        $this->actingAs(User::factory()->create())
             ->postJson('/api/logout')
-            ->assertNoContent();
+            ->assertOk()
+            ->assertJsonPath('redirect', 'https://sso.jepflow.io/logout/client?'.http_build_query([
+                'client_id' => 'myfood-client',
+                'redirect_uri' => url('/'),
+            ]));
 
         $this->assertGuest();
     }
@@ -108,5 +91,11 @@ class AuthTest extends TestCase
         $this->getJson('/api/user')
             ->assertOk()
             ->assertJsonPath('user', null);
+    }
+
+    public function test_guests_cannot_write_recipes(): void
+    {
+        $this->postJson('/api/recipes', ['title' => 'Salad', 'ingredients' => [], 'steps' => []])
+            ->assertUnauthorized();
     }
 }

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Tag;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -48,6 +49,8 @@ class RecipeImportTest extends TestCase
     public function test_it_imports_a_recipe_from_a_url(): void
     {
         $this->actingAsUser();
+        Tag::create(['name' => 'breakfast']);
+        Tag::create(['name' => 'brunch']);
 
         Http::fake([
             'recipes.test/*' => Http::response($this->pageWithRecipeJsonLd()),
@@ -73,7 +76,7 @@ class RecipeImportTest extends TestCase
         $this->assertDatabaseHas('recipes', ['title' => 'Test Pancakes', 'slug' => 'test-pancakes']);
         $this->assertDatabaseHas('ingredients', ['name' => '2 cups flour']);
         $this->assertEqualsCanonicalizing(
-            ['breakfast', 'easy', 'brunch'],
+            ['breakfast', 'brunch'],
             $response->json('data.tags'),
         );
     }
