@@ -3,24 +3,41 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\JepflowSsoClient;
+use App\Services\SsoUserResolver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class AuthController extends Controller
 {
-    public function login(Request $request)
+    public function login(Request $request, JepflowSsoClient $sso, SsoUserResolver $resolver)
     {
         $credentials = $request->validate([
             'email' => ['required', 'string', 'email'],
             'password' => ['required', 'string'],
         ]);
 
-        if (! Auth::attempt($credentials, $request->boolean('remember'))) {
+        try {
+            $token = $sso->passwordGrant($credentials['email'], $credentials['password']);
+            $ssoUser = $sso->user($token['access_token']);
+        } catch (Throwable $e) {
             throw ValidationException::withMessages([
                 'email' => __('auth.failed'),
             ]);
         }
+
+        $user = $resolver->resolve($ssoUser);
+
+        try {
+            $permissions = $sso->permissions($token['access_token']);
+            $resolver->syncRole($user, $permissions['apps']['myfood'] ?? null);
+        } catch (Throwable $e) {
+            // Permissions are non-critical to login; leave the user's existing role unchanged.
+        }
+
+        Auth::login($user, remember: $request->boolean('remember'));
 
         $request->session()->regenerate();
 

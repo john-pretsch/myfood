@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
+use App\Services\JepflowSsoClient;
+use App\Services\SsoUserResolver;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Laravel\Socialite\Facades\Socialite;
+use Throwable;
 
 class SsoController extends Controller
 {
@@ -15,28 +17,21 @@ class SsoController extends Controller
         return Socialite::driver('jepflow_sso')->redirect();
     }
 
-    public function callback(): RedirectResponse
+    public function callback(SsoUserResolver $resolver, JepflowSsoClient $sso): RedirectResponse
     {
         $ssoUser = Socialite::driver('jepflow_sso')->user();
 
-        $user = User::where('sso_id', $ssoUser->id)->first();
+        $user = $resolver->resolve([
+            'id' => $ssoUser->id,
+            'name' => $ssoUser->name,
+            'email' => $ssoUser->email,
+        ]);
 
-        if (! $user) {
-            $user = User::where('email', $ssoUser->email)->first();
-
-            if ($user) {
-                $user->update(['sso_id' => $ssoUser->id]);
-            }
-        }
-
-        if (! $user) {
-            $user = User::create([
-                'name' => $ssoUser->name,
-                'email' => $ssoUser->email,
-                'sso_id' => $ssoUser->id,
-                'password' => null,
-                'email_verified_at' => now(),
-            ]);
+        try {
+            $permissions = $sso->permissions($ssoUser->token);
+            $resolver->syncRole($user, $permissions['apps']['myfood'] ?? null);
+        } catch (Throwable $e) {
+            // Permissions are non-critical to login; leave the user's existing role unchanged.
         }
 
         Auth::login($user, remember: true);

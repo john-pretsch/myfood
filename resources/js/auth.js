@@ -15,11 +15,16 @@ async function fetchUser() {
     }
 }
 
+async function login(email, password) {
+    await api.post('/login', { email, password });
+    await fetchUser();
+}
+
 async function logout() {
     await api.post('/logout');
     user.value = null;
 }
 
 export function useAuth() {
-    return { user, ready, fetchUser, logout };
+    return { user, ready, fetchUser, login, logout };
 }
