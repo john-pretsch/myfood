@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import api from '../api';
 import { useAuth } from '../auth';
@@ -90,6 +90,50 @@ function togglePlainMode() {
     }
 }
 
+const wakeLockSupported = 'wakeLock' in navigator;
+const screenAwake = ref(false);
+let wakeLock = null;
+
+async function enableWakeLock() {
+    try {
+        wakeLock = await navigator.wakeLock.request('screen');
+        screenAwake.value = true;
+        wakeLock.addEventListener('release', () => {
+            screenAwake.value = false;
+        });
+    } catch {
+        screenAwake.value = false;
+    }
+}
+
+async function disableWakeLock() {
+    if (wakeLock) {
+        await wakeLock.release();
+        wakeLock = null;
+    }
+    screenAwake.value = false;
+}
+
+function toggleWakeLock() {
+    screenAwake.value ? disableWakeLock() : enableWakeLock();
+}
+
+// The wake lock is released automatically when the tab is hidden, so reacquire it on return.
+async function handleVisibilityChange() {
+    if (screenAwake.value && document.visibilityState === 'visible' && !wakeLock) {
+        await enableWakeLock();
+    }
+}
+
+onMounted(() => {
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+});
+
+onBeforeUnmount(() => {
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+    disableWakeLock();
+});
+
 async function load() {
     const { data } = await api.get(`/recipes/${props.id}`);
     recipe.value = data.data;
@@ -106,14 +150,27 @@ load();
 
 <template>
     <div v-if="recipe">
-        <button
-            type="button"
-            class="mb-4 flex w-full items-center justify-center gap-2 rounded-lg border-2 border-amber-600 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 shadow-sm active:scale-[0.99]"
-            @click="togglePlainMode"
-        >
-            <span v-if="plainMode">✨ Switch to fancy view</span>
-            <span v-else>📵 Switch to plain view (cooking mode)</span>
-        </button>
+        <div class="mb-4 flex gap-2">
+            <button
+                type="button"
+                class="flex flex-1 items-center justify-center gap-2 rounded-lg border-2 border-amber-600 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 shadow-sm active:scale-[0.99]"
+                @click="togglePlainMode"
+            >
+                <span v-if="plainMode">✨ Switch to fancy view</span>
+                <span v-else>📵 Switch to plain view (cooking mode)</span>
+            </button>
+
+            <button
+                v-if="wakeLockSupported"
+                type="button"
+                class="flex flex-1 items-center justify-center gap-2 rounded-lg border-2 px-4 py-3 text-sm font-semibold shadow-sm active:scale-[0.99] sm:hidden"
+                :class="screenAwake ? 'border-emerald-600 bg-emerald-50 text-emerald-800' : 'border-stone-300 bg-white text-stone-600'"
+                @click="toggleWakeLock"
+            >
+                <span v-if="screenAwake">☀️ Screen on</span>
+                <span v-else>💤 Keep screen on</span>
+            </button>
+        </div>
 
         <div :class="plainMode ? 'grayscale contrast-125' : ''">
             <div
