@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { RouterLink, useRouter } from 'vue-router';
 import api from '../api';
 import { useAuth } from '../auth';
 import TagPicker from '../components/TagPicker.vue';
@@ -123,7 +123,16 @@ loadTags();
 
 <template>
     <form class="space-y-8" @submit.prevent="submit">
-        <h1 class="text-2xl font-semibold text-stone-900">{{ isEdit ? 'Edit Recipe' : 'New Recipe' }}</h1>
+        <div class="flex items-center gap-3">
+            <RouterLink
+                v-if="isEdit"
+                :to="{ name: 'recipes.show', params: { id: props.id } }"
+                class="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm hover:bg-stone-100"
+            >
+                ← Back
+            </RouterLink>
+            <h1 class="text-2xl font-semibold text-stone-900">{{ isEdit ? 'Edit Recipe' : 'New Recipe' }}</h1>
+        </div>
 
         <section class="space-y-4 rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
             <div>
