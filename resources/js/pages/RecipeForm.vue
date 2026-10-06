@@ -1,18 +1,18 @@
 <script setup>
 import { computed, ref } from 'vue';
-import { RouterLink, useRouter } from 'vue-router';
+import { RouterLink, useRoute, useRouter } from 'vue-router';
 import api from '../api';
-import { useAuth } from '../auth';
 import TagPicker from '../components/TagPicker.vue';
+import { resizeImage } from '../image';
 
 const props = defineProps({ id: [String, Number] });
 const router = useRouter();
-const { isAdmin } = useAuth();
+const route = useRoute();
 const isEdit = computed(() => !!props.id);
 const saving = ref(false);
 const errors = ref({});
 
-const form = ref({
+const blankForm = () => ({
     title: '',
     description: '',
     servings: null,
@@ -28,27 +28,45 @@ const form = ref({
     nutrition: { calories: null, protein_g: null, carbs_g: null, fat_g: null },
 });
 
+const form = ref(blankForm());
+
+const imageFile = ref(null);
+const imagePreview = ref('');
+const imageError = ref(route.query.imageError ? 'The recipe was saved, but the image upload failed. Try again below.' : '');
+
+async function pickImage(event) {
+    const file = event.target.files[0];
+    event.target.value = '';
+    if (!file) return;
+    imageError.value = '';
+    try {
+        clearImage();
+        imageFile.value = await resizeImage(file);
+        imagePreview.value = URL.createObjectURL(imageFile.value);
+    } catch (e) {
+        imageError.value = e.message;
+    }
+}
+
+function clearImage() {
+    if (imagePreview.value) URL.revokeObjectURL(imagePreview.value);
+    imageFile.value = null;
+    imagePreview.value = '';
+}
+
 const availableTags = ref([]);
-const creatingTag = ref(false);
-const tagError = ref('');
 
 async function loadTags() {
-    const { data } = await api.get('/tags');
+    const { data } = await api.get('/tags', { params: { sort: 'popular' } });
     availableTags.value = data.data;
 }
 
-async function createTag(name) {
-    creatingTag.value = true;
-    tagError.value = '';
-    try {
-        const { data } = await api.post('/tags', { name });
-        availableTags.value = [...availableTags.value, data.data].sort((a, b) => a.name.localeCompare(b.name));
-        form.value.tags.push(data.data.name);
-    } catch (e) {
-        tagError.value = e.response?.data?.errors?.name?.[0] ?? e.response?.data?.message ?? 'Could not add tag.';
-    } finally {
-        creatingTag.value = false;
-    }
+// New tags are only created on the server when the recipe is saved.
+function createTag(name) {
+    const existing = availableTags.value.find((t) => t.name.toLowerCase() === name.toLowerCase());
+    const tagName = existing?.name ?? name;
+    if (!existing) availableTags.value = [...availableTags.value, { id: `new-${tagName}`, name: tagName }];
+    if (!form.value.tags.includes(tagName)) form.value.tags.push(tagName);
 }
 
 async function load() {
@@ -90,7 +108,7 @@ function removeStep(index) {
     form.value.steps.splice(index, 1);
 }
 
-async function submit() {
+async function submit(addAnother = false) {
     saving.value = true;
     errors.value = {};
 
@@ -105,7 +123,31 @@ async function submit() {
             ? await api.put(`/recipes/${props.id}`, payload)
             : await api.post('/recipes', payload);
 
-        router.push({ name: 'recipes.show', params: { id: response.data.data.id } });
+        const id = response.data.data.id;
+
+        if (imageFile.value) {
+            const body = new FormData();
+            body.append('image', imageFile.value, 'image.jpg');
+            try {
+                await api.post(`/recipes/${id}/image`, body);
+            } catch {
+                // The recipe is saved; send them to its edit form so they can retry the upload.
+                router.push({ name: 'recipes.edit', params: { id }, query: { imageError: 1 } });
+                return;
+            }
+        }
+
+        if (addAnother === true) {
+            if (isEdit.value) {
+                router.push({ name: 'recipes.create' });
+            } else {
+                form.value = blankForm();
+                clearImage();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        } else {
+            router.push({ name: 'recipes.index' });
+        }
     } catch (e) {
         if (e.response?.status === 422) {
             errors.value = e.response.data.errors ?? {};
@@ -170,23 +212,40 @@ loadTags();
                 <TagPicker
                     v-model="form.tags"
                     :tags="availableTags"
-                    :allow-create="isAdmin"
-                    :creating="creatingTag"
+                    allow-create
                     @create="createTag"
                 />
-                <p v-if="tagError" class="mt-1 text-xs text-red-600">{{ tagError }}</p>
             </div>
 
             <div>
-                <label class="mb-1 block text-sm font-medium">Image URL</label>
-                <input v-model="form.image_url" type="text" class="w-full rounded-md border border-stone-300 px-3 py-2 text-sm" />
+                <label class="mb-1 block text-sm font-medium">Image</label>
+                <div v-if="imagePreview" class="mb-2 flex items-center gap-3">
+                    <img :src="imagePreview" alt="Selected image preview" class="h-20 w-20 rounded-lg object-cover" />
+                    <button type="button" class="text-sm text-stone-500 hover:text-red-600" @click="clearImage">Remove upload</button>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <label class="cursor-pointer rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-medium hover:bg-stone-100">
+                        {{ imageFile ? 'Choose a different photo' : 'Upload photo' }}
+                        <input type="file" accept="image/*" class="hidden" @change="pickImage" />
+                    </label>
+                    <span class="text-sm text-stone-500">or</span>
+                    <input
+                        v-model="form.image_url"
+                        type="text"
+                        placeholder="Image URL"
+                        :disabled="!!imageFile"
+                        class="min-w-0 flex-1 rounded-md border border-stone-300 px-3 py-2 text-sm disabled:bg-stone-100 disabled:text-stone-400"
+                    />
+                </div>
+                <p v-if="imageFile" class="mt-1 text-xs text-stone-500">The uploaded photo replaces the image URL when you save.</p>
+                <p v-if="imageError" class="mt-1 text-xs text-red-600">{{ imageError }}</p>
             </div>
 
             <div v-if="isEdit" class="flex justify-end">
                 <button
                     type="button"
                     :disabled="saving"
-                    class="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-amber-700 disabled:opacity-50"
+                    class="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
                     @click="submit"
                 >
                     {{ saving ? 'Saving…' : 'Save' }}
@@ -197,7 +256,7 @@ loadTags();
         <section class="rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
             <div class="mb-3 flex items-center justify-between">
                 <h2 class="font-medium text-stone-900">🧺 Ingredients</h2>
-                <button type="button" class="text-sm text-amber-700 hover:underline" @click="addIngredient">+ Add ingredient</button>
+                <button type="button" class="text-sm text-brand-700 hover:underline" @click="addIngredient">+ Add ingredient</button>
             </div>
             <div v-for="(ingredient, index) in form.ingredients" :key="index" class="mb-2 grid grid-cols-12 gap-2">
                 <input v-model="ingredient.quantity" type="text" placeholder="qty" class="col-span-2 rounded-md border border-stone-300 px-2 py-1.5 text-sm" />
@@ -211,7 +270,7 @@ loadTags();
                 <button
                     type="button"
                     :disabled="saving"
-                    class="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-amber-700 disabled:opacity-50"
+                    class="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
                     @click="submit"
                 >
                     {{ saving ? 'Saving…' : 'Save' }}
@@ -222,7 +281,7 @@ loadTags();
         <section class="rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
             <div class="mb-3 flex items-center justify-between">
                 <h2 class="font-medium text-stone-900">📋 Steps</h2>
-                <button type="button" class="text-sm text-amber-700 hover:underline" @click="addStep">+ Add step</button>
+                <button type="button" class="text-sm text-brand-700 hover:underline" @click="addStep">+ Add step</button>
             </div>
             <div v-for="(step, index) in form.steps" :key="index" class="mb-2 flex gap-2">
                 <span class="mt-2 w-5 shrink-0 text-sm text-stone-400">{{ index + 1 }}.</span>
@@ -234,7 +293,7 @@ loadTags();
                 <button
                     type="button"
                     :disabled="saving"
-                    class="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-amber-700 disabled:opacity-50"
+                    class="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
                     @click="submit"
                 >
                     {{ saving ? 'Saving…' : 'Save' }}
@@ -267,7 +326,7 @@ loadTags();
                 <button
                     type="button"
                     :disabled="saving"
-                    class="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-amber-700 disabled:opacity-50"
+                    class="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
                     @click="submit"
                 >
                     {{ saving ? 'Saving…' : 'Save' }}
@@ -283,7 +342,7 @@ loadTags();
                 <button
                     type="button"
                     :disabled="saving"
-                    class="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-amber-700 disabled:opacity-50"
+                    class="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
                     @click="submit"
                 >
                     {{ saving ? 'Saving…' : 'Save' }}
@@ -291,12 +350,22 @@ loadTags();
             </div>
         </div>
 
-        <button
-            type="submit"
-            :disabled="saving"
-            class="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-amber-700 disabled:opacity-50"
-        >
-            {{ saving ? 'Saving…' : 'Save Recipe' }}
-        </button>
+        <div class="flex flex-wrap gap-3">
+            <button
+                type="submit"
+                :disabled="saving"
+                class="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
+            >
+                {{ saving ? 'Saving…' : 'Save Recipe' }}
+            </button>
+            <button
+                type="button"
+                :disabled="saving"
+                class="rounded-md border border-brand-600 bg-white px-4 py-2 text-sm font-medium text-brand-700 hover:bg-brand-50 disabled:opacity-50"
+                @click="submit(true)"
+            >
+                Save &amp; add another
+            </button>
+        </div>
     </form>
 </template>

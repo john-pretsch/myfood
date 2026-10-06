@@ -8,9 +8,23 @@ use Illuminate\Http\Request;
 
 class TagController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        return ['data' => Tag::orderBy('name')->get(['id', 'name'])];
+        $tags = Tag::query()
+            ->withCount('recipes')
+            ->when($request->string('search')->toString(), fn ($query, $search) => $query->where('name', 'like', "%{$search}%"))
+            ->when(
+                $request->query('sort') === 'popular',
+                fn ($query) => $query->orderByDesc('recipes_count')->orderBy('name'),
+                fn ($query) => $query->orderBy('name'),
+            )
+            ->get(['id', 'name']);
+
+        return ['data' => $tags->map(fn (Tag $tag) => [
+            'id' => $tag->id,
+            'name' => $tag->name,
+            'recipes_count' => $tag->recipes_count,
+        ])];
     }
 
     public function store(Request $request)

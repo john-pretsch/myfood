@@ -76,7 +76,7 @@ function createTag() {
                 v-if="canCreate"
                 type="button"
                 :disabled="creating"
-                class="rounded-full border border-dashed border-amber-400 px-3 py-1 text-sm text-amber-700 hover:bg-amber-50 disabled:opacity-50"
+                class="rounded-full border border-dashed border-brand-400 px-3 py-1 text-sm text-brand-700 hover:bg-brand-50 disabled:opacity-50"
                 @click="createTag"
             >
                 + Add "{{ search.trim() }}"

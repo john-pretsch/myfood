@@ -4,6 +4,7 @@ import { RouterLink, useRouter } from 'vue-router';
 import api from '../api';
 import { useAuth } from '../auth';
 import { formatQuantity } from '../format';
+import { resizeImage } from '../image';
 
 const props = defineProps({ id: [String, Number] });
 const router = useRouter();
@@ -19,24 +20,6 @@ function openImageEditor() {
     imageUrlInput.value = '';
     imageError.value = '';
     imageEditorOpen.value = true;
-}
-
-// Phone photos are often larger than the server's upload limit, so shrink them first.
-function resizeImage(file, maxSize = 1600) {
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => {
-            const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
-            const canvas = document.createElement('canvas');
-            canvas.width = Math.round(img.width * scale);
-            canvas.height = Math.round(img.height * scale);
-            canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-            URL.revokeObjectURL(img.src);
-            canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Could not read image'))), 'image/jpeg', 0.85);
-        };
-        img.onerror = () => reject(new Error('Could not read image'));
-        img.src = URL.createObjectURL(file);
-    });
 }
 
 async function saveImage(payload) {
@@ -153,7 +136,7 @@ load();
         <div class="mb-4 flex gap-2">
             <button
                 type="button"
-                class="flex flex-1 items-center justify-center gap-2 rounded-lg border-2 border-amber-600 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 shadow-sm active:scale-[0.99]"
+                class="flex flex-1 items-center justify-center gap-2 rounded-lg border-2 border-brand-600 bg-brand-50 px-4 py-3 text-sm font-semibold text-brand-800 shadow-sm active:scale-[0.99]"
                 @click="togglePlainMode"
             >
                 <span v-if="plainMode">✨ Switch to fancy view</span>
@@ -175,29 +158,36 @@ load();
         <div :class="plainMode ? 'grayscale contrast-125' : ''">
             <div
                 v-if="!plainMode"
-                class="relative mb-6 aspect-[3/1] w-full overflow-hidden rounded-xl bg-gradient-to-br from-amber-100 to-orange-100 sm:aspect-[3.5/1]"
+                class="relative mb-6 aspect-[4/5] w-full overflow-hidden rounded-3xl bg-gradient-to-br from-brand-500 via-brand-600 to-brand-800 shadow-xl shadow-brand-800/20 sm:aspect-[16/9]"
             >
                 <img
                     v-if="recipe.image_url"
                     :src="recipe.image_url"
                     :alt="recipe.title"
-                    class="h-full w-full object-cover"
+                    class="absolute inset-0 h-full w-full scale-105 object-cover motion-safe:animate-fade-up"
                 />
-                <div v-else class="flex h-full w-full items-center justify-center text-5xl">🍳</div>
+                <div v-else class="absolute inset-0 flex items-center justify-center text-7xl">🍳</div>
+                <div class="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent"></div>
+
                 <button
                     v-if="user && !imageEditorOpen"
                     type="button"
-                    class="absolute right-2 bottom-2 rounded-md bg-white/90 px-3 py-1.5 text-xs font-medium text-stone-800 shadow hover:bg-white"
+                    class="absolute top-3 right-3 rounded-full bg-white/20 px-3 py-1.5 text-xs font-medium text-white backdrop-blur hover:bg-white/30"
                     @click="openImageEditor"
                 >
                     📷 Change image
                 </button>
+
+                <div class="absolute inset-x-0 bottom-0 p-5 text-white sm:p-8">
+                    <h1 class="text-3xl leading-[1.05] font-extrabold tracking-tight text-balance drop-shadow sm:text-5xl">{{ recipe.title }}</h1>
+                    <p v-if="recipe.description" class="mt-2 line-clamp-3 max-w-2xl text-sm text-white/85 sm:text-base">{{ recipe.description }}</p>
+                </div>
             </div>
 
             <div v-if="!plainMode && imageEditorOpen" class="-mt-4 mb-6 rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
                 <div class="flex flex-wrap items-center gap-2">
                     <label
-                        class="cursor-pointer rounded-md bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700"
+                        class="cursor-pointer rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700"
                         :class="imageSaving ? 'pointer-events-none opacity-50' : ''"
                     >
                         Upload photo
@@ -227,21 +217,37 @@ load();
                 <p v-if="imageError" class="mt-2 text-sm text-red-600">{{ imageError }}</p>
             </div>
 
-            <div class="flex items-start justify-between gap-4">
-                <div>
-                    <h1 :class="plainMode ? 'text-lg font-semibold text-stone-900' : 'text-2xl font-semibold text-stone-900'">{{ recipe.title }}</h1>
-                    <p v-if="recipe.description && !plainMode" class="mt-1 text-stone-600">{{ recipe.description }}</p>
+            <h1 v-if="plainMode" class="text-lg font-semibold text-stone-900">{{ recipe.title }}</h1>
+
+            <div v-if="!plainMode" class="flex flex-wrap items-center justify-between gap-3">
+                <div class="grid flex-1 grid-cols-2 gap-2 sm:grid-cols-4">
+                    <div v-if="recipe.servings" class="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-stone-200">
+                        <p class="text-xl font-bold text-ink">{{ recipe.servings }}</p>
+                        <p class="text-xs font-medium tracking-wider text-stone-500 uppercase">Serves</p>
+                    </div>
+                    <div v-if="recipe.prep_minutes" class="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-stone-200">
+                        <p class="text-xl font-bold text-ink">{{ recipe.prep_minutes }}<span class="text-sm font-medium"> min</span></p>
+                        <p class="text-xs font-medium tracking-wider text-stone-500 uppercase">Prep</p>
+                    </div>
+                    <div v-if="recipe.cook_minutes" class="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-stone-200">
+                        <p class="text-xl font-bold text-ink">{{ recipe.cook_minutes }}<span class="text-sm font-medium"> min</span></p>
+                        <p class="text-xs font-medium tracking-wider text-stone-500 uppercase">Cook</p>
+                    </div>
+                    <div v-if="recipe.difficulty" class="rounded-2xl bg-brand-600 p-3 text-white shadow-sm">
+                        <p class="text-xl font-bold">{{ recipe.difficulty }}</p>
+                        <p class="text-xs font-medium tracking-wider text-white/80 uppercase">{{ recipe.cuisine || 'Difficulty' }}</p>
+                    </div>
                 </div>
-                <div v-if="!plainMode" class="flex shrink-0 gap-2">
+                <div class="flex shrink-0 gap-2">
                     <RouterLink
                         :to="{ name: 'recipes.edit', params: { id: recipe.id } }"
-                        class="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm hover:bg-stone-100"
+                        class="rounded-full border border-stone-300 bg-white px-4 py-1.5 text-sm hover:bg-stone-100"
                     >
                         Edit
                     </RouterLink>
                     <button
                         type="button"
-                        class="rounded-md border border-red-300 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
+                        class="rounded-full border border-red-300 px-4 py-1.5 text-sm text-red-600 hover:bg-red-50"
                         @click="destroy"
                     >
                         Delete
@@ -249,11 +255,11 @@ load();
                 </div>
             </div>
 
-            <div :class="plainMode ? 'mt-2 flex flex-wrap gap-2 text-xs text-stone-600' : 'mt-4 flex flex-wrap gap-2 text-xs text-stone-600'">
+            <div v-else class="mt-2 flex flex-wrap gap-2 text-xs text-stone-600">
                 <span v-if="recipe.servings" class="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5">🍽 Serves {{ recipe.servings }}</span>
                 <span v-if="recipe.prep_minutes" class="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5">🔪 Prep {{ recipe.prep_minutes }} min</span>
                 <span v-if="recipe.cook_minutes" class="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5">🔥 Cook {{ recipe.cook_minutes }} min</span>
-                <span v-if="recipe.difficulty" class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-amber-800">{{ recipe.difficulty }}</span>
+                <span v-if="recipe.difficulty" class="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5">{{ recipe.difficulty }}</span>
                 <span v-if="recipe.cuisine" class="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5">{{ recipe.cuisine }}</span>
             </div>
 
@@ -268,7 +274,7 @@ load();
             </div>
 
             <div :class="plainMode ? 'mt-3 flex flex-col gap-3' : 'mt-8 grid gap-6 sm:grid-cols-3'">
-                <section :class="plainMode ? '' : 'rounded-xl border border-stone-200 bg-white p-5 shadow-sm sm:col-span-1'">
+                <section :class="plainMode ? '' : 'rounded-3xl border border-stone-200 bg-white p-5 shadow-sm sm:col-span-1'">
                     <h2 :class="plainMode ? 'mb-1 flex items-center gap-2 text-sm font-semibold text-stone-900' : 'mb-3 flex items-center gap-2 font-medium text-stone-900'">
                         🧺 Ingredients
                     </h2>
@@ -278,7 +284,7 @@ load();
                             :key="ing.id"
                             :class="plainMode ? 'flex gap-2' : 'flex gap-2 border-b border-stone-100 pb-2 last:border-0 last:pb-0'"
                         >
-                            <span v-if="!plainMode" class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"></span>
+                            <span v-if="!plainMode" class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500"></span>
                             <span>
                                 <span v-if="ing.quantity">{{ formatQuantity(ing.quantity) }}</span>
                                 <span v-if="ing.unit">{{ ing.unit }}</span>
@@ -289,7 +295,7 @@ load();
                     </ul>
                 </section>
 
-                <section :class="plainMode ? '' : 'rounded-xl border border-stone-200 bg-white p-5 shadow-sm sm:col-span-2'">
+                <section :class="plainMode ? '' : 'rounded-3xl border border-stone-200 bg-white p-5 shadow-sm sm:col-span-2'">
                     <h2 :class="plainMode ? 'mb-1 flex items-center gap-2 text-sm font-semibold text-stone-900' : 'mb-3 flex items-center gap-2 font-medium text-stone-900'">
                         📋 Steps
                     </h2>
@@ -297,18 +303,18 @@ load();
                         <li v-for="(step, index) in recipe.steps" :key="step.id" class="flex gap-2">
                             <span
                                 v-if="!plainMode"
-                                class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-600 text-xs font-semibold text-white"
+                                class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-600 text-sm font-bold text-white shadow-sm shadow-brand-800/30"
                             >
                                 {{ index + 1 }}
                             </span>
                             <span v-else class="shrink-0 font-semibold text-stone-500">{{ index + 1 }}.</span>
-                            <span :class="plainMode ? '' : 'pt-0.5'">{{ step.instruction }}</span>
+                            <span :class="plainMode ? '' : 'pt-1'">{{ step.instruction }}</span>
                         </li>
                     </ol>
                 </section>
             </div>
 
-            <section v-if="recipe.nutrition && !plainMode" class="mt-6 rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
+            <section v-if="recipe.nutrition && !plainMode" class="mt-6 rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
                 <h2 class="mb-3 font-medium text-stone-900">Nutrition</h2>
                 <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
                     <div v-if="recipe.nutrition.calories" class="rounded-lg bg-stone-50 p-3 text-center">

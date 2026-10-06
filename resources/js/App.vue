@@ -12,16 +12,16 @@ watch(route, () => {
     menuOpen.value = false;
 });
 
-const navItemClass = 'block rounded-md px-3 py-2 text-sm font-medium text-stone-600 hover:bg-stone-100 hover:text-stone-900';
+const navItemClass = 'block rounded-md px-3 py-2 text-sm font-medium text-stone-600 hover:bg-brand-50 hover:text-brand-700';
 
 fetchUser();
 </script>
 
 <template>
-    <div class="min-h-screen bg-stone-50 text-stone-900">
+    <div class="min-h-screen bg-stone-50 text-ink">
         <header class="sticky top-0 z-10 border-b border-stone-200 bg-white/80 backdrop-blur">
             <div class="mx-auto flex max-w-4xl items-center justify-between px-6 py-4">
-                <RouterLink to="/" class="flex items-center gap-2 text-lg font-semibold tracking-tight text-stone-900">
+                <RouterLink to="/" class="flex items-center gap-2 text-xl font-bold tracking-tight text-ink">
                     <img src="https://spaces-cdn.clipsafari.com/jmjrsnaahktp5zcacdc2bytf5nly" alt="MyFood" class="h-6 w-6 rounded object-contain" />
                     MyFood
                 </RouterLink>
@@ -49,17 +49,23 @@ fetchUser();
                 </button>
             </div>
 
-            <nav v-if="menuOpen" class="flex flex-col gap-1 border-t border-stone-200 px-6 py-3 sm:hidden">
-                <RouterLink to="/" :class="navItemClass">View Recipes</RouterLink>
-                <RouterLink v-if="isAdmin" to="/tags" :class="navItemClass">Tags</RouterLink>
-                <RouterLink v-if="user" to="/recipes/new" :class="navItemClass">New Recipe</RouterLink>
-                <button v-if="user" type="button" :class="[navItemClass, 'text-left']" @click="logout">Log out</button>
-                <a v-else-if="ready" href="/auth/sso/redirect" :class="navItemClass">Log in</a>
-            </nav>
+            <Transition name="menu">
+                <nav v-if="menuOpen" class="flex flex-col gap-1 border-t border-stone-200 px-6 py-3 sm:hidden">
+                    <RouterLink to="/" :class="navItemClass">View Recipes</RouterLink>
+                    <RouterLink v-if="isAdmin" to="/tags" :class="navItemClass">Tags</RouterLink>
+                    <RouterLink v-if="user" to="/recipes/new" :class="navItemClass">New Recipe</RouterLink>
+                    <button v-if="user" type="button" :class="[navItemClass, 'text-left']" @click="logout">Log out</button>
+                    <a v-else-if="ready" href="/auth/sso/redirect" :class="navItemClass">Log in</a>
+                </nav>
+            </Transition>
         </header>
 
-        <main class="mx-auto max-w-4xl px-6 py-8">
-            <RouterView />
+        <main :class="['mx-auto px-4 py-6 sm:px-6 sm:py-8', route.name === 'recipes.index' ? 'max-w-5xl' : 'max-w-4xl']">
+            <RouterView v-slot="{ Component, route: viewRoute }">
+                <Transition name="page" mode="out-in">
+                    <component :is="Component" :key="viewRoute.path" />
+                </Transition>
+            </RouterView>
         </main>
     </div>
 </template>

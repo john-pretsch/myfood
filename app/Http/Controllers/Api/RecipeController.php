@@ -9,8 +9,10 @@ use App\Models\Ingredient;
 use App\Models\Nutrition;
 use App\Models\Recipe;
 use App\Models\Tag;
+use App\Services\RecipeAutoTagger;
 use App\Services\RecipeUrlImporter;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
@@ -24,7 +26,8 @@ class RecipeController extends Controller
         $recipes = Recipe::query()
             ->with('tags')
             ->when($request->string('search')->toString(), fn ($query, $search) => $query->where('title', 'like', "%{$search}%"))
-            ->when($request->string('tag')->toString(), fn ($query, $tag) => $query->whereHas('tags', fn ($q) => $q->where('name', $tag)))
+            // Multiple tags (tag[]=a&tag[]=b) match recipes having any of them.
+            ->when(array_filter(Arr::wrap($request->input('tag'))), fn ($query, $tags) => $query->whereHas('tags', fn ($q) => $q->whereIn('name', $tags)))
             ->latest()
             ->paginate(6);
 
@@ -126,6 +129,11 @@ class RecipeController extends Controller
 
     private function createRecipe(array $data): Recipe
     {
+        $data['tags'] = array_values(array_unique([
+            ...($data['tags'] ?? []),
+            ...app(RecipeAutoTagger::class)->suggest($data),
+        ]));
+
         $recipe = Recipe::create([
             ...$data,
             'slug' => $this->uniqueSlug($data['title']),
@@ -159,7 +167,7 @@ class RecipeController extends Controller
             'steps.*.instruction' => ['required_with:steps', 'string'],
             'steps.*.image_url' => ['nullable', 'string', 'max:2048'],
             'tags' => ['array'],
-            'tags.*' => ['string', Rule::exists('tags', 'name')],
+            'tags.*' => ['string', 'max:100'],
             'nutrition' => ['nullable', 'array'],
             'nutrition.calories' => ['nullable', 'integer', 'min:0'],
             'nutrition.protein_g' => ['nullable', 'numeric', 'min:0'],
@@ -194,7 +202,14 @@ class RecipeController extends Controller
             ]);
         }
 
-        $recipe->tags()->sync(Tag::whereIn('name', $data['tags'] ?? [])->pluck('id'));
+        // Tags that don't exist yet are created on the fly.
+        $tagIds = collect($data['tags'] ?? [])
+            ->map(fn ($name) => trim($name))
+            ->filter()
+            ->map(fn ($name) => Tag::firstOrCreate(['name' => $name])->id)
+            ->unique();
+
+        $recipe->tags()->sync($tagIds);
 
         if (! empty(array_filter($data['nutrition'] ?? []))) {
             Nutrition::updateOrCreate(
